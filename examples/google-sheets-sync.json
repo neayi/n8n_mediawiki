@@ -1,0 +1,97 @@
+{
+  "name": "Example: Sync Google Sheets to MediaWiki",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Sheet1!A:E",
+        "options": {}
+      },
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pageTitle": "={{ $json.page_title }}",
+        "templateName": "={{ $json.template_name }}",
+        "position": "top",
+        "templateVariables": {
+          "variable": [
+            {
+              "name": "={{ $json.var1_name }}",
+              "value": "={{ $json.var1_value }}"
+            },
+            {
+              "name": "={{ $json.var2_name }}",
+              "value": "={{ $json.var2_value }}"
+            },
+            {
+              "name": "last_updated",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}"
+            }
+          ]
+        },
+        "editSummary": "Automated sync from Google Sheets via n8n"
+      },
+      "name": "Update MediaWiki",
+      "type": "n8n-nodes-mediawiki.mediaWikiCreateOrUpdateTemplate",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {
+        "mediaWikiApi": {
+          "id": "1",
+          "name": "MediaWiki API account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Update MediaWiki",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
