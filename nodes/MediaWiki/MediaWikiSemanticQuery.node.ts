@@ -3,9 +3,11 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
 } from 'n8n-workflow';
-import axios from 'axios';
 import { getLoginTokenAndCookies, login } from './helpers/authentication';
+
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
 
 // Helper function to clean SMW metadata from values
 function cleanSMWValue(value: any): any {
@@ -88,6 +90,7 @@ async function executeAskQuery(
 	limit: number,
 	sortOrder: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 ): Promise<any[]> {
 	// Build the complete Ask query
 	let fullQuery = query;
@@ -107,8 +110,10 @@ async function executeAskQuery(
 		fullQuery += `|${sortOrder}`;
 	}
 
-	const response = await axios.get(apiUrl, {
-		params: {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'ask',
 			uselang: 'en',
 			api_version: '3',
@@ -120,16 +125,16 @@ async function executeAskQuery(
 		},
 	});
 
-	if (response.data.error) {
-		throw new Error(`Ask API error: ${response.data.error.info || 'Unknown error'}`);
+	if (response.error) {
+		throw new Error(`Ask API error: ${response.error.info || 'Unknown error'}`);
 	}
 
 	const results: any[] = [];
 
 	// Parse Ask API response (v3 format)
 	// Results is an array of objects, each with page name as key
-	if (response.data.query && response.data.query.results) {
-		const resultsArray = response.data.query.results;
+	if (response.query && response.query.results) {
+		const resultsArray = response.query.results;
 		
 		// Iterate through the array
 		for (const resultItem of resultsArray) {
@@ -271,7 +276,8 @@ export class MediaWikiSemanticQuery implements INodeType {
 				const apiUrl = baseUrl.endsWith('/api.php') ? baseUrl : `${baseUrl}/api.php`;
 
 				// Get login token and initial cookies
-				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl);
+				const httpRequest = this.helpers.httpRequest.bind(this);
+				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl, httpRequest);
 
 				// Login to get session cookies
 				const cookies = await login(
@@ -280,12 +286,13 @@ export class MediaWikiSemanticQuery implements INodeType {
 					credentials.botPassword as string,
 					loginToken,
 					initialCookies,
+					httpRequest,
 					'MediaWikiSemanticQuery',
 					'n8n-nodes-mediawiki.mediaWikiSemanticQuery',
 				);
 
 				// Execute the Ask query
-				const results = await executeAskQuery(apiUrl, query, fields, limit, sortOrder, cookies);
+				const results = await executeAskQuery(apiUrl, query, fields, limit, sortOrder, cookies, httpRequest);
 
 				// Return results - each result as a separate item
 				for (const result of results) {

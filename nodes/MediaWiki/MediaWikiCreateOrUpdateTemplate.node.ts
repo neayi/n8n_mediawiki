@@ -3,16 +3,20 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
 	NodeOperationError,
 } from 'n8n-workflow';
 
-import axios from 'axios';
 import { getLoginTokenAndCookies, login, getCsrfToken } from './helpers/authentication';
 
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
+
 // Helper functions
-async function getPageContent(apiUrl: string, pageTitle: string, cookies: string): Promise<string> {
-	const response = await axios.get(apiUrl, {
-		params: {
+async function getPageContent(apiUrl: string, pageTitle: string, cookies: string, httpRequest: HttpRequestFn): Promise<string> {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			titles: pageTitle,
 			prop: 'revisions',
@@ -25,7 +29,7 @@ async function getPageContent(apiUrl: string, pageTitle: string, cookies: string
 		},
 	});
 
-	const pages = response.data.query.pages;
+	const pages = response.query.pages;
 	const pageId = Object.keys(pages)[0];
 
 	if (pageId === '-1') {
@@ -143,34 +147,37 @@ async function editPage(
 	summary: string,
 	csrfToken: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 ): Promise<any> {
-	const params = new URLSearchParams();
-	params.append('action', 'edit');
-	params.append('title', pageTitle);
-	params.append('text', content);
-	params.append('summary', summary);
-	params.append('token', csrfToken);
-	params.append('format', 'json');
-
-	const response = await axios.post(apiUrl, params, {
+	const response = await httpRequest({
+		method: 'POST',
+		url: apiUrl,
+		body: new URLSearchParams({
+			action: 'edit',
+			title: pageTitle,
+			text: content,
+			summary: summary,
+			token: csrfToken,
+			format: 'json',
+		}),
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 			Cookie: cookies,
 		},
 	});
 
-	if (response.data.error) {
+	if (response.error) {
 		throw new NodeOperationError(
 			{
 				name: 'MediaWikiCreateOrUpdateTemplate',
 				type: 'n8n-nodes-mediawiki.mediaWikiCreateOrUpdateTemplate',
 				typeVersion: 1,
 			} as any,
-			`Edit failed: ${response.data.error.info || 'Unknown error'}`,
+			`Edit failed: ${response.error.info || 'Unknown error'}`,
 		);
 	}
 
-	return response.data.edit;
+	return response.edit;
 }
 
 export class MediaWikiCreateOrUpdateTemplate implements INodeType {
@@ -340,16 +347,17 @@ export class MediaWikiCreateOrUpdateTemplate implements INodeType {
 				const templateVariables = templateVariablesData.variable || [];
 
 				// Step 1: Get login token and initial cookies
-				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl);
+				const httpRequest = this.helpers.httpRequest.bind(this);
+				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl, httpRequest);
 
 				// Step 2: Login and get session cookies
-				const cookies = await login(apiUrl, botUsername, botPassword, loginToken, initialCookies, 'MediaWikiCreateOrUpdateTemplate', 'n8n-nodes-mediawiki.mediaWikiCreateOrUpdateTemplate');
+				const cookies = await login(apiUrl, botUsername, botPassword, loginToken, initialCookies, httpRequest, 'MediaWikiCreateOrUpdateTemplate', 'n8n-nodes-mediawiki.mediaWikiCreateOrUpdateTemplate');
 
 				// Step 3: Get CSRF token
-				const csrfToken = await getCsrfToken(apiUrl, cookies);
+				const csrfToken = await getCsrfToken(apiUrl, cookies, httpRequest);
 
 				// Step 4: Get current page content
-				const pageContent = await getPageContent(apiUrl, pageTitle, cookies);
+				const pageContent = await getPageContent(apiUrl, pageTitle, cookies, httpRequest);
 
 				// Step 5: Parse and update content
 				const updatedContent = updateTemplateInContent(
@@ -380,6 +388,7 @@ export class MediaWikiCreateOrUpdateTemplate implements INodeType {
 					editSummary,
 					csrfToken,
 					cookies,
+					httpRequest,
 				);
 
 				returnData.push({

@@ -3,11 +3,12 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
 	NodeOperationError,
 } from 'n8n-workflow';
-import axios from 'axios';
 import { getLoginTokenAndCookies, login, getCsrfToken } from './helpers/authentication';
-import FormData from 'form-data';
+
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
 
 // Helper function
 async function uploadFile(
@@ -18,12 +19,13 @@ async function uploadFile(
 	text: string,
 	csrfToken: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 	ignoreWarnings: boolean = false,
 ): Promise<any> {
 	const formData = new FormData();
 	formData.append('action', 'upload');
 	formData.append('filename', filename);
-	formData.append('file', fileBuffer, filename);
+	formData.append('file', new Blob([fileBuffer as unknown as ArrayBuffer], { type: 'application/octet-stream' }), filename);
 	formData.append('comment', comment);
 	formData.append('text', text);
 	formData.append('token', csrfToken);
@@ -33,28 +35,28 @@ async function uploadFile(
 		formData.append('ignorewarnings', '1');
 	}
 
-	const response = await axios.post(apiUrl, formData, {
+	const response = await httpRequest({
+		method: 'POST',
+		url: apiUrl,
+		body: formData,
 		headers: {
-			...formData.getHeaders(),
 			Cookie: cookies,
 		},
-		maxBodyLength: Infinity,
-		maxContentLength: Infinity,
 	});
 
-	if (response.data.error) {
+	if (response.error) {
 		throw new NodeOperationError(
 			{
 				name: 'MediaWikiUploadFile',
 				type: 'n8n-nodes-mediawiki.mediaWikiUploadFile',
 				typeVersion: 1,
 			} as any,
-			`Upload failed: ${response.data.error.info || 'Unknown error'}`,
+			`Upload failed: ${response.error.info || 'Unknown error'}`,
 		);
 	}
 
-	if (response.data.upload && response.data.upload.warnings && !ignoreWarnings) {
-		const warnings = Object.entries(response.data.upload.warnings)
+	if (response.upload && response.upload.warnings && !ignoreWarnings) {
+		const warnings = Object.entries(response.upload.warnings)
 			.map(([key, value]) => `${key}: ${value}`)
 			.join(', ');
 		throw new NodeOperationError(
@@ -67,7 +69,7 @@ async function uploadFile(
 		);
 	}
 
-	return response.data.upload;
+	return response.upload;
 }
 
 export class MediaWikiUploadFile implements INodeType {
@@ -186,13 +188,14 @@ export class MediaWikiUploadFile implements INodeType {
 				const fileBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 				// Step 1: Get login token and initial cookies
-				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl);
+				const httpRequest = this.helpers.httpRequest.bind(this);
+				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl, httpRequest);
 
 				// Step 2: Login and get session cookies
-				const cookies = await login(apiUrl, botUsername, botPassword, loginToken, initialCookies, 'MediaWikiUploadFile', 'n8n-nodes-mediawiki.mediaWikiUploadFile');
+				const cookies = await login(apiUrl, botUsername, botPassword, loginToken, initialCookies, httpRequest, 'MediaWikiUploadFile', 'n8n-nodes-mediawiki.mediaWikiUploadFile');
 
 				// Step 3: Get CSRF token
-				const csrfToken = await getCsrfToken(apiUrl, cookies);
+				const csrfToken = await getCsrfToken(apiUrl, cookies, httpRequest);
 
 				// Step 4: Upload the file
 				const result = await uploadFile(
@@ -203,6 +206,7 @@ export class MediaWikiUploadFile implements INodeType {
 					description,
 					csrfToken,
 					cookies,
+					httpRequest,
 					ignoreWarnings,
 				);
 

@@ -3,10 +3,12 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
 	NodeOperationError,
 } from 'n8n-workflow';
-import axios from 'axios';
 import { getLoginTokenAndCookies, login } from './helpers/authentication';
+
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
 
 type ContentType = 'rawWikiCode' | 'parsedPage' | 'html';
 
@@ -15,6 +17,7 @@ async function getPageInfo(
 	apiUrl: string,
 	pageTitle: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 ): Promise<{
 	content: string;
 	pageId: number;
@@ -23,8 +26,10 @@ async function getPageInfo(
 	lastModified: string;
 	lastModifiedBy: string;
 }> {
-	const response = await axios.get(apiUrl, {
-		params: {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			titles: pageTitle,
 			prop: 'revisions|info',
@@ -37,7 +42,7 @@ async function getPageInfo(
 		},
 	});
 
-	const pages = response.data.query.pages;
+	const pages = response.query.pages;
 	const pageId = Object.keys(pages)[0];
 
 	if (pageId === '-1') {
@@ -84,9 +89,12 @@ async function getParsedPageContent(
 	apiUrl: string,
 	pageTitle: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 ): Promise<string> {
-	const response = await axios.get(apiUrl, {
-		params: {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			prop: 'extracts',
 			redirects: true,
@@ -99,7 +107,7 @@ async function getParsedPageContent(
 		},
 	});
 
-	const pages = response.data.query.pages;
+	const pages = response.query.pages;
 	const pageId = Object.keys(pages)[0];
 
 	if (pageId === '-1') {
@@ -130,19 +138,21 @@ async function getHtmlPageContent(
 	baseUrl: string,
 	pageTitle: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 ): Promise<string> {
-	const response = await axios.get(getRenderUrl(baseUrl), {
-		params: {
+	const response = await httpRequest({
+		method: 'GET',
+		url: getRenderUrl(baseUrl),
+		qs: {
 			title: pageTitle,
 			action: 'render',
 		},
 		headers: {
 			Cookie: cookies,
 		},
-		responseType: 'text',
 	});
 
-	return response.data;
+	return response as string;
 }
 
 export class MediaWikiGetPageContent implements INodeType {
@@ -257,25 +267,27 @@ export class MediaWikiGetPageContent implements INodeType {
 				const apiUrl = baseUrl.endsWith('/api.php') ? baseUrl : `${baseUrl}/api.php`;
 
 				// Authentication
-				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl);
+				const httpRequest = this.helpers.httpRequest.bind(this);
+				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl, httpRequest);
 				const cookies = await login(
 					apiUrl,
 					credentials.botUsername as string,
 					credentials.botPassword as string,
 					loginToken,
 					initialCookies,
+					httpRequest,
 					'MediaWiki Get Page Content',
 					'n8n-nodes-mediawiki.mediaWikiGetPageContent',
 				);
 
 				// Get page metadata and use it directly for raw content
-				const pageInfo = await getPageInfo(apiUrl, pageTitle, cookies);
+				const pageInfo = await getPageInfo(apiUrl, pageTitle, cookies, httpRequest);
 				let content = pageInfo.content;
 
 				if (contentType === 'parsedPage') {
-					content = await getParsedPageContent(apiUrl, pageTitle, cookies);
+					content = await getParsedPageContent(apiUrl, pageTitle, cookies, httpRequest);
 				} else if (contentType === 'html') {
-					content = await getHtmlPageContent(baseUrl, pageTitle, cookies);
+					content = await getHtmlPageContent(baseUrl, pageTitle, cookies, httpRequest);
 				}
 
 				// Build response

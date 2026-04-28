@@ -1,25 +1,29 @@
-import { NodeOperationError } from 'n8n-workflow';
-import axios from 'axios';
+import { NodeOperationError, IHttpRequestOptions } from 'n8n-workflow';
 
-export async function getLoginTokenAndCookies(apiUrl: string): Promise<{ token: string; cookies: string }> {
-	const response = await axios.get(apiUrl, {
-		params: {
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
+
+export async function getLoginTokenAndCookies(
+	apiUrl: string,
+	httpRequest: HttpRequestFn,
+): Promise<{ token: string; cookies: string }> {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			meta: 'tokens',
 			type: 'login',
 			format: 'json',
 		},
-		maxRedirects: 0,
-		validateStatus: (status) => status >= 200 && status < 400,
+		returnFullResponse: true,
 	});
 
-	// Extract cookies from the initial request
 	const cookies = response.headers['set-cookie']
 		? response.headers['set-cookie'].map((cookie: string) => cookie.split(';')[0]).join('; ')
 		: '';
 
 	return {
-		token: response.data.query.tokens.logintoken,
+		token: response.body.query.tokens.logintoken,
 		cookies: cookies,
 	};
 }
@@ -30,33 +34,36 @@ export async function login(
 	password: string,
 	loginToken: string,
 	initialCookies: string,
+	httpRequest: HttpRequestFn,
 	nodeName: string = 'MediaWiki',
 	nodeType: string = 'n8n-nodes-mediawiki',
 ): Promise<string> {
-	const params = new URLSearchParams();
-	params.append('action', 'login');
-	params.append('lgname', username);
-	params.append('lgpassword', password);
-	params.append('lgtoken', loginToken);
-	params.append('format', 'json');
-
-	const response = await axios.post(apiUrl, params, {
+	const response = await httpRequest({
+		method: 'POST',
+		url: apiUrl,
+		body: new URLSearchParams({
+			action: 'login',
+			lgname: username,
+			lgpassword: password,
+			lgtoken: loginToken,
+			format: 'json',
+		}),
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 			Cookie: initialCookies,
 		},
-		maxRedirects: 0,
-		validateStatus: (status) => status >= 200 && status < 400,
+		returnFullResponse: true,
+		ignoreHttpStatusErrors: true,
 	});
 
-	if (response.data.login.result !== 'Success') {
+	if (response.body.login.result !== 'Success') {
 		throw new NodeOperationError(
 			{
 				name: nodeName,
 				type: nodeType,
 				typeVersion: 1,
 			} as any,
-			`Login failed: ${response.data.login.reason || response.data.login.result || 'Unknown error'}`,
+			`Login failed: ${response.body.login.reason || response.body.login.result || 'Unknown error'}`,
 		);
 	}
 
@@ -78,7 +85,7 @@ export async function login(
 		? response.headers['set-cookie'].map((cookie: string) => cookie.split(';')[0])
 		: [];
 
-	newCookies.forEach((cookie) => {
+	newCookies.forEach((cookie: string) => {
 		const [name, value] = cookie.split('=');
 		if (name && value) {
 			cookieMap.set(name, value);
@@ -91,9 +98,15 @@ export async function login(
 		.join('; ');
 }
 
-export async function getCsrfToken(apiUrl: string, cookies: string): Promise<string> {
-	const response = await axios.get(apiUrl, {
-		params: {
+export async function getCsrfToken(
+	apiUrl: string,
+	cookies: string,
+	httpRequest: HttpRequestFn,
+): Promise<string> {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			meta: 'tokens',
 			type: 'csrf',
@@ -104,5 +117,5 @@ export async function getCsrfToken(apiUrl: string, cookies: string): Promise<str
 		},
 	});
 
-	return response.data.query.tokens.csrftoken;
+	return response.query.tokens.csrftoken;
 }

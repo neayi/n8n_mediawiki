@@ -3,15 +3,19 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
 	NodeOperationError,
 } from 'n8n-workflow';
-import axios from 'axios';
 import { getLoginTokenAndCookies, login, getCsrfToken } from './helpers/authentication';
 
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
+
 // Helper functions
-async function checkPageExists(apiUrl: string, pageTitle: string, cookies: string): Promise<boolean> {
-	const response = await axios.get(apiUrl, {
-		params: {
+async function checkPageExists(apiUrl: string, pageTitle: string, cookies: string, httpRequest: HttpRequestFn): Promise<boolean> {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			titles: pageTitle,
 			format: 'json',
@@ -21,7 +25,7 @@ async function checkPageExists(apiUrl: string, pageTitle: string, cookies: strin
 		},
 	});
 
-	const pages = response.data.query.pages;
+	const pages = response.query.pages;
 	const pageId = Object.keys(pages)[0];
 	
 	// Page doesn't exist if pageId is negative
@@ -35,44 +39,49 @@ async function createOrUpdatePage(
 	summary: string,
 	csrfToken: string,
 	cookies: string,
+	httpRequest: HttpRequestFn,
 	createonly = false,
 	contentModel?: string,
 ): Promise<any> {
-	const params = new URLSearchParams();
-	params.append('action', 'edit');
-	params.append('title', pageTitle);
-	params.append('text', content);
-	params.append('summary', summary);
-	params.append('token', csrfToken);
-	params.append('format', 'json');
+	const formBody: Record<string, string> = {
+		action: 'edit',
+		title: pageTitle,
+		text: content,
+		summary: summary,
+		token: csrfToken,
+		format: 'json',
+	};
 	
 	if (createonly) {
-		params.append('createonly', '1');
+		formBody.createonly = '1';
 	}
 	
 	if (contentModel) {
-		params.append('contentmodel', contentModel);
+		formBody.contentmodel = contentModel;
 	}
 
-	const response = await axios.post(apiUrl, params, {
+	const response = await httpRequest({
+		method: 'POST',
+		url: apiUrl,
+		body: new URLSearchParams(formBody),
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 			Cookie: cookies,
 		},
 	});
 
-	if (response.data.error) {
+	if (response.error) {
 		throw new NodeOperationError(
 			{
 				name: 'MediaWikiAddPage',
 				type: 'n8n-nodes-mediawiki.mediaWikiAddPage',
 				typeVersion: 1,
 			} as any,
-			`Edit failed: ${response.data.error.info || 'Unknown error'}`,
+			`Edit failed: ${response.error.info || 'Unknown error'}`,
 		);
 	}
 
-	return response.data.edit;
+	return response.edit;
 }
 
 export class MediaWikiAddPage implements INodeType {
@@ -227,17 +236,19 @@ export class MediaWikiAddPage implements INodeType {
 				const ifExists = this.getNodeParameter('ifExists', i) as string;
 				const editSummary = this.getNodeParameter('editSummary', i) as string;
 
+				const httpRequest = this.helpers.httpRequest.bind(this);
+
 				// Step 1: Get login token and initial cookies
-				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl);
+				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl, httpRequest);
 
 				// Step 2: Login and get session cookies
-				const cookies = await login(apiUrl, botUsername, botPassword, loginToken, initialCookies, 'MediaWikiAddPage', 'n8n-nodes-mediawiki.mediaWikiAddPage');
+				const cookies = await login(apiUrl, botUsername, botPassword, loginToken, initialCookies, httpRequest, 'MediaWikiAddPage', 'n8n-nodes-mediawiki.mediaWikiAddPage');
 
 				// Step 3: Get CSRF token
-				const csrfToken = await getCsrfToken(apiUrl, cookies);
+				const csrfToken = await getCsrfToken(apiUrl, cookies, httpRequest);
 
 				// Step 4: Check if page exists
-				const pageExists = await checkPageExists(apiUrl, pageTitle, cookies);
+				const pageExists = await checkPageExists(apiUrl, pageTitle, cookies, httpRequest);
 
 				let action = 'created';
 
@@ -269,6 +280,7 @@ export class MediaWikiAddPage implements INodeType {
 					editSummary,
 					csrfToken,
 					cookies,
+					httpRequest,
 					false, // Don't use createonly since we might overwrite
 					contentModel,
 				);

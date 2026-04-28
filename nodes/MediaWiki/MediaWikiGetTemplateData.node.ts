@@ -3,15 +3,19 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestOptions,
 	NodeOperationError,
 } from 'n8n-workflow';
-import axios from 'axios';
 import { getLoginTokenAndCookies, login } from './helpers/authentication';
 
+type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
+
 // Helper functions
-async function getPageContent(apiUrl: string, pageTitle: string, cookies: string): Promise<string> {
-	const response = await axios.get(apiUrl, {
-		params: {
+async function getPageContent(apiUrl: string, pageTitle: string, cookies: string, httpRequest: HttpRequestFn): Promise<string> {
+	const response = await httpRequest({
+		method: 'GET',
+		url: apiUrl,
+		qs: {
 			action: 'query',
 			titles: pageTitle,
 			prop: 'revisions',
@@ -24,7 +28,7 @@ async function getPageContent(apiUrl: string, pageTitle: string, cookies: string
 		},
 	});
 
-	const pages = response.data.query.pages;
+	const pages = response.query.pages;
 	const pageId = Object.keys(pages)[0];
 
 	if (pageId === '-1') {
@@ -200,7 +204,8 @@ export class MediaWikiGetTemplateData implements INodeType {
 				const apiUrl = baseUrl.endsWith('/api.php') ? baseUrl : `${baseUrl}/api.php`;
 
 				// Get login token and initial cookies
-				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl);
+				const httpRequest = this.helpers.httpRequest.bind(this);
+				const { token: loginToken, cookies: initialCookies } = await getLoginTokenAndCookies(apiUrl, httpRequest);
 
 				// Login to get session cookies
 				const cookies = await login(
@@ -209,12 +214,13 @@ export class MediaWikiGetTemplateData implements INodeType {
 					credentials.botPassword as string,
 					loginToken,
 					initialCookies,
+					httpRequest,
 					'MediaWikiGetTemplateData',
 					'n8n-nodes-mediawiki.mediaWikiGetTemplateData',
 				);
 
 				// Get page content
-				const content = await getPageContent(apiUrl, pageTitle, cookies);
+				const content = await getPageContent(apiUrl, pageTitle, cookies, httpRequest);
 
 				// Parse template data
 				const templateData = parseTemplateData(content, templateName);
