@@ -84,7 +84,8 @@ function updateTemplateInContent(
 	templateName: string,
 	variables: Array<{ name: string; value: string }>,
 	position: string,
-): string {
+	templateNotExistAction: string = 'create',
+): string | null {
 	// Check if template already exists using a regex
 	// This regex matches {{templateName ... }} including multi-line templates
 	// We need to match everything between {{ and }} carefully
@@ -107,7 +108,12 @@ function updateTemplateInContent(
 			mergedVariables.set(v.name, v.value);
 		});
 	} else {
-		// Template doesn't exist - use only new variables
+		// Template doesn't exist
+		if (templateNotExistAction === 'fail') {
+			// Return null to indicate template not found and action is set to fail
+			return null;
+		}
+		// Use only new variables if action is 'create'
 		mergedVariables = new Map(variables.map((v) => [v.name, v.value]));
 	}
 
@@ -229,6 +235,23 @@ export class MediaWikiCreateOrUpdateTemplate implements INodeType {
 				placeholder: 'Infobox',
 			},
 			{
+				displayName: 'If template does not exist in page',
+				name: 'templateNotExistAction',
+				type: 'options',
+				options: [
+					{
+						name: 'Create it',
+						value: 'create',
+					},
+					{
+						name: 'Fail',
+						value: 'fail',
+					},
+				],
+				default: 'create',
+				description: 'What to do if the template is not found on the page',
+			},
+			{
 				displayName: 'Position',
 				name: 'position',
 				type: 'options',
@@ -308,6 +331,7 @@ export class MediaWikiCreateOrUpdateTemplate implements INodeType {
 				const pageTitle = this.getNodeParameter('pageTitle', i) as string;
 				const templateName = this.getNodeParameter('templateName', i) as string;
 				const position = this.getNodeParameter('position', i) as string;
+				const templateNotExistAction = this.getNodeParameter('templateNotExistAction', i) as string;
 				const editSummary = this.getNodeParameter('editSummary', i) as string;
 				const templateVariablesData = this.getNodeParameter('templateVariables', i) as {
 					variable?: Array<{ name: string; value: string }>;
@@ -333,7 +357,20 @@ export class MediaWikiCreateOrUpdateTemplate implements INodeType {
 					templateName,
 					templateVariables,
 					position,
+					templateNotExistAction,
 				);
+
+				// Check if template was not found and action is set to fail
+				if (updatedContent === null) {
+					throw new NodeOperationError(
+						{
+							name: 'MediaWikiCreateOrUpdateTemplate',
+							type: 'n8n-nodes-mediawiki.mediaWikiCreateOrUpdateTemplate',
+							typeVersion: 1,
+						} as any,
+						`Template "${templateName}" not found in page "${pageTitle}"`,
+					);
+				}
 
 				// Step 6: Save the page
 				const editResult = await editPage(
