@@ -1,6 +1,6 @@
 {
-  "name": "n8n-nodes-mediawiki",
-  "version": "0.1.0",
+  "name": "@neayi/n8n-nodes-mediawiki",
+  "version": "0.1.1",
   "description": "n8n nodes for interacting with MediaWiki",
   "license": "MIT",
   "homepage": "https://github.com/neayi/n8n_mediawiki",
@@ -12,6 +12,9 @@
     "type": "git",
     "url": "git+https://github.com/neayi/n8n_mediawiki.git"
   },
+  "bugs": {
+    "url": "https://github.com/neayi/n8n_mediawiki/issues"
+  },  
   "main": "index.js",
   "scripts": {
     "build": "tsc && gulp build:icons",
