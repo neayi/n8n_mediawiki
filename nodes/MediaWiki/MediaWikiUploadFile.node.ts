@@ -77,13 +77,26 @@ export class MediaWikiUploadFile implements INodeType {
 		icon: 'file:mediawiki.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["operation"]}}',
+		subtitle: 'Upload a file',
 		description: 'Upload a file to MediaWiki',
 		defaults: {
 			name: 'MediaWiki Upload File',
 		},
 		inputs: ['main'],
 		outputs: ['main'],
+		codex: {
+			categories: ['Development'],
+			subcategories: {
+				Development: ['MediaWiki'],
+			},
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://www.mediawiki.org/wiki/API:Upload',
+					},
+				],
+			},
+		},
 		credentials: [
 			{
 				name: 'mediaWikiApi',

@@ -35,7 +35,7 @@ async function createOrUpdatePage(
 	summary: string,
 	csrfToken: string,
 	cookies: string,
-	createonly: boolean = false,
+	createonly = false,
 	contentModel?: string,
 ): Promise<any> {
 	const params = new URLSearchParams();
@@ -82,13 +82,26 @@ export class MediaWikiAddPage implements INodeType {
 		icon: 'file:mediawiki.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["operation"]}}',
+		subtitle: 'Add a new page',
 		description: 'Create a new page in MediaWiki',
 		defaults: {
 			name: 'MediaWiki Add Page',
 		},
 		inputs: ['main'],
 		outputs: ['main'],
+		codex: {
+			categories: ['Development'],
+			subcategories: {
+				Development: ['MediaWiki'],
+			},
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://www.mediawiki.org/wiki/API:Edit',
+					},
+				],
+			},
+		},
 		credentials: [
 			{
 				name: 'mediaWikiApi',
@@ -226,7 +239,6 @@ export class MediaWikiAddPage implements INodeType {
 				// Step 4: Check if page exists
 				const pageExists = await checkPageExists(apiUrl, pageTitle, cookies);
 
-				let result;
 				let action = 'created';
 
 				if (pageExists) {
@@ -250,7 +262,7 @@ export class MediaWikiAddPage implements INodeType {
 				}
 
 				// Step 5: Create or update the page
-				result = await createOrUpdatePage(
+				const result = await createOrUpdatePage(
 					apiUrl,
 					pageTitle,
 					pageContent,

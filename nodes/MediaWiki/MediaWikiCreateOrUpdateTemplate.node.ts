@@ -50,7 +50,7 @@ function parseTemplateVariables(templateContent: string): Map<string, string> {
 	
 	// Remove the opening {{ and closing }} and template name
 	// Match {{TemplateName|...}} and extract the content after the template name
-	const contentMatch = templateContent.match(/\{\{\s*[^|\}]+\s*\|?([\s\S]*?)\}\}/);
+	const contentMatch = templateContent.match(/\{\{\s*[^|}]+\s*\|?([\s\S]*?)\}\}/);
 	if (!contentMatch || !contentMatch[1]) {
 		return variables;
 	}
@@ -174,13 +174,26 @@ export class MediaWikiCreateOrUpdateTemplate implements INodeType {
 		icon: 'file:mediawiki.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["operation"]}}',
+		subtitle: 'Manage page templates',
 		description: 'Create or update a template in a MediaWiki page',
 		defaults: {
-			name: 'MediaWiki Template',
+			name: 'MediaWiki Create/Update Template',
 		},
 		inputs: ['main'],
 		outputs: ['main'],
+		codex: {
+			categories: ['Development'],
+			subcategories: {
+				Development: ['MediaWiki'],
+			},
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://www.mediawiki.org/wiki/API:Edit',
+					},
+				],
+			},
+		},
 		credentials: [
 			{
 				name: 'mediaWikiApi',

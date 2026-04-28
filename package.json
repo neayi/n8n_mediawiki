@@ -32,7 +32,9 @@
     "nodes": [
       "dist/nodes/MediaWiki/MediaWikiCreateOrUpdateTemplate.node.js",
       "dist/nodes/MediaWiki/MediaWikiAddPage.node.js",
-      "dist/nodes/MediaWiki/MediaWikiUploadFile.node.js"
+      "dist/nodes/MediaWiki/MediaWikiUploadFile.node.js",
+      "dist/nodes/MediaWiki/MediaWikiGetTemplateData.node.js",
+      "dist/nodes/MediaWiki/MediaWikiSemanticQuery.node.js"
     ]
   },
   "keywords": [
