@@ -14,7 +14,7 @@
   },
   "bugs": {
     "url": "https://github.com/neayi/n8n_mediawiki/issues"
-  },  
+  },
   "main": "index.js",
   "scripts": {
     "build": "tsc && gulp build:icons",
@@ -48,11 +48,14 @@
     "wiki"
   ],
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
     "eslint": "^10.2.1",
     "eslint-plugin-n8n-nodes-base": "^1.16.6",
+    "globals": "^17.5.0",
     "gulp": "^5.0.1",
     "n8n-workflow": "^2.16.0",
     "prettier": "^3.8.3",
