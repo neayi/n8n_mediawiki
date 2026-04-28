@@ -1,6 +1,6 @@
 {
   "name": "@neayi/n8n-nodes-mediawiki",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "n8n nodes for interacting with MediaWiki",
   "license": "MIT",
   "homepage": "https://github.com/neayi/n8n_mediawiki",
