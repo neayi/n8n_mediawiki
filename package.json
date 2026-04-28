@@ -34,7 +34,8 @@
       "dist/nodes/MediaWiki/MediaWikiAddPage.node.js",
       "dist/nodes/MediaWiki/MediaWikiUploadFile.node.js",
       "dist/nodes/MediaWiki/MediaWikiGetTemplateData.node.js",
-      "dist/nodes/MediaWiki/MediaWikiSemanticQuery.node.js"
+      "dist/nodes/MediaWiki/MediaWikiSemanticQuery.node.js",
+      "dist/nodes/MediaWiki/MediaWikiGetPageContent.node.js"
     ]
   },
   "keywords": [
