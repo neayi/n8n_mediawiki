@@ -8,6 +8,7 @@ import {
 } from 'n8n-workflow';
 
 import { getLoginTokenAndCookies, login, getCsrfToken } from './helpers/authentication';
+import { findTemplate, parseTemplateParams } from './helpers/wikitext';
 
 type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
 
@@ -45,44 +46,6 @@ async function getPageContent(apiUrl: string, pageTitle: string, cookies: string
 	return page.revisions[0].slots.main['*'];
 }
 
-function escapeRegex(str: string): string {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function parseTemplateVariables(templateContent: string): Map<string, string> {
-	const variables = new Map<string, string>();
-	
-	// Remove the opening {{ and closing }} and template name
-	// Match {{TemplateName|...}} and extract the content after the template name
-	const contentMatch = templateContent.match(/\{\{\s*[^|}]+\s*\|?([\s\S]*?)\}\}/);
-	if (!contentMatch || !contentMatch[1]) {
-		return variables;
-	}
-	
-	const paramsContent = contentMatch[1];
-	
-	// Split by | but we need to be careful with the content
-	// A simple approach: split by | and process each part
-	const parts = paramsContent.split('|');
-	
-	for (const part of parts) {
-		const trimmedPart = part.trim();
-		if (!trimmedPart) continue;
-		
-		// Find the first = to split name and value
-		const eqIndex = trimmedPart.indexOf('=');
-		if (eqIndex !== -1) {
-			const name = trimmedPart.substring(0, eqIndex).trim();
-			const value = trimmedPart.substring(eqIndex + 1).trim();
-			if (name) {
-				variables.set(name, value);
-			}
-		}
-	}
-	
-	return variables;
-}
-
 function updateTemplateInContent(
 	content: string,
 	templateName: string,
@@ -90,23 +53,14 @@ function updateTemplateInContent(
 	position: string,
 	templateNotExistAction: string = 'create',
 ): string | null {
-	// Check if template already exists using a regex
-	// This regex matches {{templateName ... }} including multi-line templates
-	// We need to match everything between {{ and }} carefully
-	const templateRegex = new RegExp(
-		`\\{\\{\\s*${escapeRegex(templateName)}\\s*(?:\\|[\\s\\S]*?)?\\}\\}`,
-		'i',
-	);
-
-	const match = content.match(templateRegex);
+	const templateMatch = findTemplate(content, templateName);
 
 	let mergedVariables: Map<string, string>;
-	
-	if (match) {
+
+	if (templateMatch) {
 		// Template exists - parse existing variables and merge with new ones
-		const existingTemplateContent = match[0];
-		mergedVariables = parseTemplateVariables(existingTemplateContent);
-		
+		mergedVariables = parseTemplateParams(templateMatch.inner);
+
 		// Update/add new variables (new values override existing ones)
 		variables.forEach((v) => {
 			mergedVariables.set(v.name, v.value);
@@ -114,7 +68,6 @@ function updateTemplateInContent(
 	} else {
 		// Template doesn't exist
 		if (templateNotExistAction === 'fail') {
-			// Return null to indicate template not found and action is set to fail
 			return null;
 		}
 		// Use only new variables if action is 'create'
@@ -127,9 +80,9 @@ function updateTemplateInContent(
 		.join('\n');
 	const newTemplate = `{{${templateName}\n${templateVars}\n}}`;
 
-	if (match) {
-		// Template exists, replace it
-		return content.replace(templateRegex, newTemplate);
+	if (templateMatch) {
+		// Template exists, replace it with exact position (preserves the rest of the page)
+		return content.substring(0, templateMatch.start) + newTemplate + content.substring(templateMatch.end);
 	} else {
 		// Template doesn't exist, add it
 		if (position === 'top') {

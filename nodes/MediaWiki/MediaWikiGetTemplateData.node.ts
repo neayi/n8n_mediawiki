@@ -7,6 +7,7 @@ import {
 	NodeOperationError,
 } from 'n8n-workflow';
 import { getLoginTokenAndCookies, login } from './helpers/authentication';
+import { findTemplate, parseTemplateParams } from './helpers/wikitext';
 
 type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
 
@@ -51,99 +52,8 @@ async function getPageContent(apiUrl: string, pageTitle: string, cookies: string
 	return page.revisions[0].slots.main['*'];
 }
 
-function escapeRegex(str: string): string {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
-/**
- * Split template inner content by top-level | characters,
- * ignoring | inside nested {{ }} or [[ ]] blocks.
- */
-function splitTopLevel(content: string): string[] {
-	const parts: string[] = [];
-	let depth = 0;
-	let current = '';
-
-	for (let i = 0; i < content.length; i++) {
-		const ch = content[i];
-		const next = content[i + 1];
-		if ((ch === '{' || ch === '[') && next === ch) {
-			depth++;
-			current += ch + next;
-			i++;
-		} else if ((ch === '}' || ch === ']') && next === ch) {
-			depth--;
-			current += ch + next;
-			i++;
-		} else if (ch === '|' && depth === 0) {
-			parts.push(current);
-			current = '';
-		} else {
-			current += ch;
-		}
-	}
-	parts.push(current);
-	return parts;
-}
-
-function parseTemplateData(content: string, templateName: string): Record<string, string> | null {
-	// Locate the start of the template: {{ followed by optional whitespace and the template name
-	const templateStartRegex = new RegExp(
-		`\\{\\{\\s*${escapeRegex(templateName)}\\s*(?=[|\\}])`,
-		'i',
-	);
-
-	const startMatch = templateStartRegex.exec(content);
-	if (!startMatch) {
-		return null;
-	}
-
-	// Walk forward from the match position tracking {{ }} depth to find the closing }}
-	const startIndex = startMatch.index;
-	let depth = 0;
-	let endIndex = -1;
-
-	for (let i = startIndex; i < content.length - 1; i++) {
-		if (content[i] === '{' && content[i + 1] === '{') {
-			depth++;
-			i++;
-		} else if (content[i] === '}' && content[i + 1] === '}') {
-			depth--;
-			if (depth === 0) {
-				endIndex = i + 2;
-				break;
-			}
-			i++;
-		}
-	}
-
-	if (endIndex === -1) {
-		return null; // Unclosed template
-	}
-
-	// inner = everything between {{ and }}
-	const inner = content.substring(startIndex + 2, endIndex - 2);
-
-	// parts[0] is the template name; remaining parts are parameters
-	const parts = splitTopLevel(inner);
-
-	const variables: Record<string, string> = {};
-	for (let j = 1; j < parts.length; j++) {
-		const part = parts[j].trim();
-		if (!part) continue;
-
-		const eqIndex = part.indexOf('=');
-		if (eqIndex !== -1) {
-			const name = part.substring(0, eqIndex).trim();
-			const value = part.substring(eqIndex + 1).trim();
-			if (name) {
-				variables[name] = value;
-			}
-		}
-	}
-
-	return variables;
-}
+// parseTemplateData is now handled by findTemplate + parseTemplateParams from helpers/wikitext
 
 export class MediaWikiGetTemplateData implements INodeType {
 	description: INodeTypeDescription = {
@@ -264,9 +174,9 @@ export class MediaWikiGetTemplateData implements INodeType {
 				const content = await getPageContent(apiUrl, pageTitle, cookies, httpRequest);
 
 				// Parse template data
-				const templateData = parseTemplateData(content, templateName);
+				const templateMatch = findTemplate(content, templateName);
 
-				if (templateData === null) {
+				if (templateMatch === null) {
 					if (errorIfNotFound) {
 						throw new NodeOperationError(
 							this.getNode(),
@@ -285,6 +195,8 @@ export class MediaWikiGetTemplateData implements INodeType {
 						continue;
 					}
 				}
+
+				const templateData = Object.fromEntries(parseTemplateParams(templateMatch.inner));
 
 				returnData.push({
 					json: {
