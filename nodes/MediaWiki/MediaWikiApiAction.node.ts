@@ -3,12 +3,9 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	IHttpRequestOptions,
 	NodeOperationError,
 } from 'n8n-workflow';
 import { getLoginTokenAndCookies, login, getCsrfToken } from './helpers/authentication';
-
-type HttpRequestFn = (options: IHttpRequestOptions) => Promise<any>;
 
 export class MediaWikiApiAction implements INodeType {
 	description: INodeTypeDescription = {
@@ -183,7 +180,7 @@ export class MediaWikiApiAction implements INodeType {
 					returnData.push({
 						json: {
 							success: false,
-							error: error.message,
+							error: error instanceof Error ? error.message : String(error),
 						},
 						pairedItem: i,
 					});
