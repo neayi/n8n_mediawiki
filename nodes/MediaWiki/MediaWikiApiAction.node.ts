@@ -157,6 +157,7 @@ export class MediaWikiApiAction implements INodeType {
 						'Content-Type': 'application/x-www-form-urlencoded',
 						Cookie: cookies,
 					},
+					timeout: 600000,
 				});
 
 				if (response.error) {
