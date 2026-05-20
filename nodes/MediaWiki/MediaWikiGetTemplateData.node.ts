@@ -55,44 +55,87 @@ function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Split template inner content by top-level | characters,
+ * ignoring | inside nested {{ }} or [[ ]] blocks.
+ */
+function splitTopLevel(content: string): string[] {
+	const parts: string[] = [];
+	let depth = 0;
+	let current = '';
+
+	for (let i = 0; i < content.length; i++) {
+		const ch = content[i];
+		const next = content[i + 1];
+		if ((ch === '{' || ch === '[') && next === ch) {
+			depth++;
+			current += ch + next;
+			i++;
+		} else if ((ch === '}' || ch === ']') && next === ch) {
+			depth--;
+			current += ch + next;
+			i++;
+		} else if (ch === '|' && depth === 0) {
+			parts.push(current);
+			current = '';
+		} else {
+			current += ch;
+		}
+	}
+	parts.push(current);
+	return parts;
+}
+
 function parseTemplateData(content: string, templateName: string): Record<string, string> | null {
-	// Check if template exists using a regex
-	// This regex matches {{templateName ... }} including multi-line templates
-	const templateRegex = new RegExp(
-		`\\{\\{\\s*${escapeRegex(templateName)}\\s*(?:\\|[\\s\\S]*?)?\\}\\}`,
+	// Locate the start of the template: {{ followed by optional whitespace and the template name
+	const templateStartRegex = new RegExp(
+		`\\{\\{\\s*${escapeRegex(templateName)}\\s*(?=[|\\}])`,
 		'i',
 	);
 
-	const match = content.match(templateRegex);
-
-	if (!match) {
+	const startMatch = templateStartRegex.exec(content);
+	if (!startMatch) {
 		return null;
 	}
 
-	const templateContent = match[0];
-	const variables: Record<string, string> = {};
+	// Walk forward from the match position tracking {{ }} depth to find the closing }}
+	const startIndex = startMatch.index;
+	let depth = 0;
+	let endIndex = -1;
 
-	// Remove the opening {{ and closing }} and template name
-	// Match {{TemplateName|...}} and extract the content after the template name
-	const contentMatch = templateContent.match(/\{\{\s*[^|}]+\s*\|?([\s\S]*?)\}\}/);
-	if (!contentMatch || !contentMatch[1]) {
-		return variables;
+	for (let i = startIndex; i < content.length - 1; i++) {
+		if (content[i] === '{' && content[i + 1] === '{') {
+			depth++;
+			i++;
+		} else if (content[i] === '}' && content[i + 1] === '}') {
+			depth--;
+			if (depth === 0) {
+				endIndex = i + 2;
+				break;
+			}
+			i++;
+		}
 	}
 
-	const paramsContent = contentMatch[1];
+	if (endIndex === -1) {
+		return null; // Unclosed template
+	}
 
-	// Split by | but we need to be careful with the content
-	const parts = paramsContent.split('|');
+	// inner = everything between {{ and }}
+	const inner = content.substring(startIndex + 2, endIndex - 2);
 
-	for (const part of parts) {
-		const trimmedPart = part.trim();
-		if (!trimmedPart) continue;
+	// parts[0] is the template name; remaining parts are parameters
+	const parts = splitTopLevel(inner);
 
-		// Find the first = to split name and value
-		const eqIndex = trimmedPart.indexOf('=');
+	const variables: Record<string, string> = {};
+	for (let j = 1; j < parts.length; j++) {
+		const part = parts[j].trim();
+		if (!part) continue;
+
+		const eqIndex = part.indexOf('=');
 		if (eqIndex !== -1) {
-			const name = trimmedPart.substring(0, eqIndex).trim();
-			const value = trimmedPart.substring(eqIndex + 1).trim();
+			const name = part.substring(0, eqIndex).trim();
+			const value = part.substring(eqIndex + 1).trim();
 			if (name) {
 				variables[name] = value;
 			}
